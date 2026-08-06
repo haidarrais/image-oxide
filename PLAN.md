@@ -13,10 +13,10 @@ Everything is spec-driven. The specs are the requirements; this file is only an 
 | Spec | Phase | Status |
 |------|-------|--------|
 | [000-constitution.md](specs/000-constitution.md) | all | FROZEN |
-| [001-daemon-ipc.md](specs/001-daemon-ipc.md) — wire protocol | 1 | DRAFT |
-| [002-daemon-lifecycle.md](specs/002-daemon-lifecycle.md) | 1 | DRAFT |
-| [003-image-ops.md](specs/003-image-ops.md) — pixel semantics (dual impl) | 1 | DRAFT |
-| [004-php-client.md](specs/004-php-client.md) | 2 | DRAFT |
+| [001-daemon-ipc.md](specs/001-daemon-ipc.md) — wire protocol | 1 | ✅ DONE — 22+9 tests green, commit `7900765` |
+| [002-daemon-lifecycle.md](specs/002-daemon-lifecycle.md) | 1 | ✅ DONE — socket 0600, pool, idle shutdown, SIGTERM |
+| [003-image-ops.md](specs/003-image-ops.md) — pixel semantics (dual impl) | 1 | ✅ DONE — pipeline + EXIF, AC-OPS-03 covered |
+| [004-php-client.md](specs/004-php-client.md) | 2 | ✅ DONE — 11 PHPUnit tests green, AC-PHP-01..05 |
 | [006-ci-release.md](specs/006-ci-release.md) — Rust/client half | 4 | DRAFT |
 | 005-laravel-bridge.md, 006 (Laravel half) | 3 | **migrated** → repo 2 |
 
