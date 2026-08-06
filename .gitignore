@@ -1,13 +1,2 @@
-# Rust
-/target
-Cargo.lock
-
-# OS
-.DS_Store
-
-# IDE
-.idea/
-.vscode/
-
-# Local daemon socket
+target/
 *.sock
