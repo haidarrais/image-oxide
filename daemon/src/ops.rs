@@ -106,9 +106,13 @@ fn validate_output_path(path: &str) -> Result<PathBuf, OxideError> {
 /// `OPS-03`: decode then auto-apply EXIF orientation. Post-rotation dimensions
 /// are the ones reported in the response.
 fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
-    let mut reader = ImageReader::open(path).map_err(|e| {
-        OxideError::new(ErrorCode::InputUnreadable, format!("cannot open input: {e}"))
-    })?;
+    let mut reader = ImageReader::open(path)
+        // Content-probe the format instead of inferring it from the file
+        // extension: clients like the storage macro hand over extensionless
+        // temp files (tempnam), which the extension-based path rejects.
+        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, format!("cannot open input: {e}")))?
+        .with_guessed_format()
+        .map_err(|e| OxideError::new(ErrorCode::DecodeFailed, format!("cannot sniff input format: {e}")))?;
     reader.no_limits();
     let format = reader.format().ok_or_else(|| {
         OxideError::new(ErrorCode::DecodeFailed, "unrecognized input format")
@@ -279,7 +283,11 @@ fn validate_quality(q: Option<u8>) -> Result<u8, OxideError> {
 
 fn input_format(input: &Path) -> Result<ImageFormat, OxideError> {
     let reader = ImageReader::open(input)
-        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, e.to_string()))?;
+        // Same content-probing rationale as `decode`: extensionless temp files
+        // (tempnam) must still resolve to their real format.
+        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, e.to_string()))?
+        .with_guessed_format()
+        .map_err(|e| OxideError::new(ErrorCode::DecodeFailed, e.to_string()))?;
     reader.format().ok_or_else(|| {
         OxideError::new(ErrorCode::DecodeFailed, "unrecognized input format")
     })
@@ -409,7 +417,9 @@ fn op_format(state: &mut State, op: &serde_json::Value) -> Result<(), OxideError
         .and_then(|v| v.as_str())
         .ok_or_else(|| OxideError::new(ErrorCode::OpFailed, "format op missing `format`"))?;
     let format = match ty {
-        "jpeg" => ImageFormat::Jpeg,
+        // `jpg` is the GD-parity alias for `jpeg` (clients like the storage
+        // macro pass it through verbatim).
+        "jpeg" | "jpg" => ImageFormat::Jpeg,
         "png" => ImageFormat::Png,
         "webp" => ImageFormat::WebP,
         "gif" => ImageFormat::Gif,
@@ -878,5 +888,39 @@ mod tests {
         let err = process_request(&build(body)).unwrap_err();
         assert_eq!(err.code, ErrorCode::OpFailed);
         assert!(!out.exists(), "no partial output must be left behind");
+    }
+
+    #[test]
+    fn decode_sniffs_format_without_extension() {
+        // The storage macro hands over extensionless temp files (tempnam);
+        // decode must content-probe, not rely on the file extension.
+        let dir = tempdir().unwrap();
+        let input = write_input(dir.path(), "temp", &jpeg_pixels(64, 64));
+        let out = dir.path().join("out.png");
+        let body = serde_json::json!({
+            "id": "13",
+            "ops": [{"type": "format", "format": "png"}],
+            "input": {"path": input},
+            "output": {"path": out.to_string_lossy()}
+        });
+        let processed = process_request(&build(body)).unwrap();
+        assert_eq!((processed.width, processed.height), (64, 64));
+    }
+
+    #[test]
+    fn format_accepts_jpg_alias_for_gd_parity() {
+        // GD driver normalizes `jpg` -> `jpeg`; the daemon must accept the
+        // same alias so the storage macro's `format('jpg')` works verbatim.
+        let dir = tempdir().unwrap();
+        let input = write_input(dir.path(), "in.jpg", &jpeg_pixels(16, 16));
+        let out = dir.path().join("out.jpg");
+        let body = serde_json::json!({
+            "id": "14",
+            "ops": [{"type": "format", "format": "jpg"}],
+            "input": {"path": input},
+            "output": {"path": out.to_string_lossy()}
+        });
+        let processed = process_request(&build(body)).unwrap();
+        assert_eq!((processed.width, processed.height), (16, 16));
     }
 }
