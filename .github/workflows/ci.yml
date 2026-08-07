@@ -43,8 +43,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      # CI-03: the encoders are pure-Rust (no C source deps), but every Rust
+      # binary still links against libc, and rustc shells out to `cc` for that
+      # final link. GitHub runners ship only the host gcc, which cannot link a
+      # non-native target — install a cross-linker for aarch64.
+      - name: Install cross-linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
       - name: Cross-compile daemon
         run: cargo build --manifest-path daemon/Cargo.toml --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
   # CI-05: NFR benchmark gate — the daemon must stay ahead of GD on resize+compress.
   # Requires the demo layout (laravel-image-oxide-demo + php-image-oxide) beside
