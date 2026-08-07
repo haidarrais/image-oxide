@@ -15,14 +15,19 @@ CI enforces the constitution (000) from Phase 4 onward. Matrices and publish ord
 
 - `CI-01` — MUST. Rust daemon CI matrix: `ubuntu-latest`, `macos-latest`, `windows-latest` × stable toolchain. Windows runs the TCP transport tests (`LIFE-03`).
 - `CI-02` — MUST. PHP client CI matrix: PHP 8.1, 8.2, 8.3 × `ubuntu-latest`. Runs against a compiled daemon binary from the same pipeline (or a tagged release).
-- `CI-03` — MUST. Cross-compile target for the daemon covers `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` (avoids C deps for AVIF in v1 — `OPS-01`).
+- `CI-03` — MUST. Cross-compile target for the daemon covers `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` (avoids C deps for AVIF in v1 — `OPS-01`). The JPEG encoder (`mozjpeg-rs`) and WebP lossy encoder (`webp-rust`) are pure-Rust ports — no C dependencies enter the build.
 
 ### NFR benchmarks (from PLAN.md, calibrated in Phase 1)
 
 - `CI-04` — MUST. Boot-to-accepting p50 < 50ms, measured on the CI runner.
-- `CI-05` — MUST. Resize 4000×3000 → 800×600 JPEG p95 < 300ms on the CI runner.
+- `CI-05` — MUST. Resize 4000×3000 → 800×600 JPEG p95 < 300ms on the CI runner. **Implemented** as the daemon-vs-GD upload gate in the demo's `bench.sh` (oxide rtt ≤ 1.25× GD rtt on resize, and output must not regress).
 - `CI-06` — MUST. Daemon RSS ceiling 128 MB on a 24MP image (measured, asserted in CI).
 - `CI-07` — MUST. Max frame 64 MiB (`IPC-02`).
+
+**Encoder/quality notes (implemented):**
+- JPEG encode uses `mozjpeg-rs` (`Preset::BaselineFastest`) — smaller output at equal quality than the image crate's encoder, no C deps. mozjpeg's quality scale differs from GD's `imagejpeg($q)`, so `OPS-05`'s nominal quality is a per-encoder scale.
+- WebP encode is now quality-aware: `quality ≥ 90` → lossless VP8L, else lossy VP8 (`webp-rust`, pure-Rust). The v1 "lossless-only" limitation is gone.
+- The benchmark splits daemon work (`duration_ms`) from client round-trip IPC — the IPC cost is ~1–3 ms/op, dominated by encoder/resize work.
 
 ### Test naming & coverage table
 

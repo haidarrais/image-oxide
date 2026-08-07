@@ -154,18 +154,43 @@ fn encode(img: &DynamicImage, format: ImageFormat, quality: u8, out: &mut Vec<u8
             } else {
                 img.to_rgb8()
             };
-            image::codecs::jpeg::JpegEncoder::new_with_quality(out, quality)
-                .encode_image(&rgb)
-                .map_err(|e| encode_err(format, e))
+            // mozjpeg-rs (pure-Rust mozjpeg port) — smaller output at equal
+            // quality than the image crate's encoder (CI-03 keeps cross-compile
+            // free of C deps). `BaselineFastest` is the speed tier; the
+            // progressive/trellis presets trade 2-3× encode time for a few more
+            // percent, which loses the resize race against GD. mozjpeg's quality
+            // scale differs from GD's `imagejpeg($q)` (`OPS-05`).
+            let bytes = mozjpeg_rs::Encoder::new(mozjpeg_rs::Preset::BaselineFastest)
+                .quality(quality)
+                .encode_rgb(&rgb, rgb.width(), rgb.height())
+                .map_err(|e| encode_err(format, e))?;
+            out.extend_from_slice(&bytes);
+            Ok(())
         }
         ImageFormat::WebP => {
-            // 0.25's encoder is lossless-only (VP8L). `quality` is a no-op for
-            // WebP in v1 — documented limitation (`OPS-05`, `OPS-12`).
-            let _ = quality;
             let rgba = img.to_rgba8();
-            image::codecs::webp::WebPEncoder::new_lossless(out)
-                .write_image(&rgba, rgba.width(), rgba.height(), ExtendedColorType::Rgba8)
-                .map_err(|e| encode_err(format, e))
+            let buffer = webp_rust::ImageBuffer {
+                width: rgba.width() as usize,
+                height: rgba.height() as usize,
+                rgba: rgba.into_raw(),
+            };
+            if quality >= 90 {
+                // `OPS-05`: high quality → lossless VP8L (webp-rust default
+                // lossless config); preserves alpha exactly.
+                let config = webp_rust::LosslessEncodingConfig::default();
+                let bytes = webp_rust::encode_lossless_with_config(&buffer, &config, None)
+                    .map_err(|e| encode_err(format, e))?;
+                out.extend_from_slice(&bytes);
+            } else {
+                // Lossy VP8 (pure-Rust, keeps CI-03's no-C-deps cross-compile).
+                // image 0.25's encoder is lossless-only — this replaces it.
+                let mut config = webp_rust::LossyEncodingConfig::default();
+                config.quality = quality as f32;
+                let bytes = webp_rust::encode_lossy_with_config(&buffer, &config, None)
+                    .map_err(|e| encode_err(format, e))?;
+                out.extend_from_slice(&bytes);
+            }
+            Ok(())
         }
         ImageFormat::Png => {
             let rgba = img.to_rgba8();
@@ -190,7 +215,7 @@ fn encode(img: &DynamicImage, format: ImageFormat, quality: u8, out: &mut Vec<u8
     }
 }
 
-fn encode_err(format: ImageFormat, e: image::ImageError) -> OxideError {
+fn encode_err(format: ImageFormat, e: impl std::fmt::Display) -> OxideError {
     OxideError::new(ErrorCode::OpFailed, format!("{format:?} encode failed: {e}"))
 }
 

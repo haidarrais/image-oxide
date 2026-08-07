@@ -208,39 +208,43 @@ fn handle_connection(mut stream: UnixStream) {
         let _ = write_frame(&mut stream, &body);
     }
 
-    // `IPC-09` onward: exactly one request in flight per connection (`IPC-23`);
-    // a second request is `INVALID_REQUEST`.
-    let req_body = match read_frame(&mut stream) {
-        Ok(Some(body)) => body,
-        Ok(None) | Err(_) => return,
-    };
-    let req = match parse_request(&req_body) {
-        Ok(r) => r,
-        Err(e) => return write_failure(&mut stream, "", e),
-    };
+    // `IPC-09` onward: one request in flight per connection (`IPC-23`) — that
+    // means *at most one at a time*, not *one per connection*. Loop so a
+    // keep-alive client (connection pooling) can reuse the stream; the client
+    // closes, the stream EOFs, and we return.
+    loop {
+        let req_body = match read_frame(&mut stream) {
+            Ok(Some(body)) => body,
+            Ok(None) | Err(_) => return,
+        };
+        let req = match parse_request(&req_body) {
+            Ok(r) => r,
+            Err(e) => return write_failure(&mut stream, "", e),
+        };
 
-    let started = Instant::now();
-    let result = ops::process_request(&req);
-    let duration_ms = started.elapsed().as_millis() as u64;
+        let started = Instant::now();
+        let result = ops::process_request(&req);
+        let duration_ms = started.elapsed().as_millis() as u64;
 
-    match result {
-        Ok(processed) => {
-            let success = Success {
-                id: req.id.clone(),
-                status: "ok",
-                output_path: req.output.path.clone(),
-                bytes: processed.bytes,
-                width: processed.width,
-                height: processed.height,
-                duration_ms,
-            };
-            if let Ok(body) = serde_json::to_vec(&success) {
-                let _ = write_frame(&mut stream, &body);
+        match result {
+            Ok(processed) => {
+                let success = Success {
+                    id: req.id.clone(),
+                    status: "ok",
+                    output_path: req.output.path.clone(),
+                    bytes: processed.bytes,
+                    width: processed.width,
+                    height: processed.height,
+                    duration_ms,
+                };
+                if let Ok(body) = serde_json::to_vec(&success) {
+                    let _ = write_frame(&mut stream, &body);
+                }
             }
+            Err(err) => write_failure(&mut stream, &req.id, err),
         }
-        Err(err) => write_failure(&mut stream, &req.id, err),
+        // `IPC-19`: exactly one reply per request — then loop for the next.
     }
-    // `IPC-19`: exactly one reply per request — this function returns once.
 }
 
 fn write_failure(stream: &mut UnixStream, id: &str, err: OxideError) {
@@ -306,8 +310,15 @@ pub fn run_forever(
 mod tests {
     use super::*;
 
+    /// Rust tests run in parallel threads sharing one process env; mutating
+    /// `XDG_RUNTIME_DIR` from several threads races (`set_var`/`remove_var` are
+    /// unsafe in current Rust for exactly this reason). Serialize the env-touching
+    /// tests so `life_01_fallback` never sees a leaked `/run/user/1234`.
+    static ENV_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn life_01_xdg_runtime_dir_wins() {
+        let _g = ENV_MUTEX.lock().unwrap();
         std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1234");
         assert_eq!(
             resolve_socket_path(),
@@ -318,6 +329,7 @@ mod tests {
 
     #[test]
     fn life_01_fallback_tmp_per_uid() {
+        let _g = ENV_MUTEX.lock().unwrap();
         std::env::remove_var("XDG_RUNTIME_DIR");
         let p = resolve_socket_path();
         let expect = PathBuf::from(format!("/tmp/image-oxide-{}.sock", current_uid()));

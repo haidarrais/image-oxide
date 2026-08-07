@@ -232,6 +232,26 @@ fn ipc_17_19_exactly_one_reply_per_request() {
     }
 }
 
+#[test]
+fn ipc_23_sequential_requests_on_one_connection() {
+    // IPC-23 allows one request *in flight* at a time; a keep-alive client can
+    // reuse the connection for the next request after the first completes.
+    let d = Daemon::start();
+    let mut stream = connect(&d);
+    let _ = hello(&mut stream);
+    let dir = tempfile::tempdir().unwrap();
+    for i in 0..3 {
+        let input = dir.path().join(format!("in{i}.png"));
+        write_png(&input, 8 + i, 8 + i);
+        let output = dir.path().join(format!("out{i}.png"));
+        let body = request(&format!("k{i}"), input.to_str().unwrap(), output.to_str().unwrap());
+        write_frame(&mut stream, &serde_json::to_vec(&body).unwrap());
+        let resp = read_msg(&mut stream);
+        assert_eq!(resp["status"], "ok");
+        assert_eq!(resp["id"], format!("k{i}"));
+    }
+}
+
 // ---- LIFE: lifecycle behavior ----
 
 #[test]

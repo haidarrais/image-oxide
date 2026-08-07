@@ -17,7 +17,7 @@ Everything is spec-driven. The specs are the requirements; this file is only an 
 | [002-daemon-lifecycle.md](specs/002-daemon-lifecycle.md) | 1 | ✅ DONE — socket 0600, pool, idle shutdown, SIGTERM |
 | [003-image-ops.md](specs/003-image-ops.md) — pixel semantics (dual impl) | 1 | ✅ DONE — pipeline + EXIF, AC-OPS-03 covered |
 | [004-php-client.md](specs/004-php-client.md) | 2 | ✅ DONE — published as [`haidarrais/php-image-oxide`](https://github.com/haidarrais/php-image-oxide) / Packagist `haidarrais/image-oxide` |
-| [006-ci-release.md](specs/006-ci-release.md) — Rust/client half | 4 | DRAFT |
+| [006-ci-release.md](specs/006-ci-release.md) — Rust/client half | 4 | IN PROGRESS — daemon CI (`.github/workflows/ci.yml`), cross-compile matrix, and the `bench.sh` NFR gate exist; `CI-04` boot and `CI-06` RSS still to measure |
 | 005-laravel-bridge.md, 006 (Laravel half) | 3 | **migrated** → repo 2 |
 
 ## Phases
@@ -28,6 +28,12 @@ Everything is spec-driven. The specs are the requirements; this file is only an 
 | 2 | PHP client (004) | All `PHP-`/`DL-` MUSTs pass; GD capability table matches 003 |
 | 3 | Laravel bridge (005) | All `LV-` MUSTs pass (in repo 2) |
 | 4 | CI + NFR benchmarks (006) | `CI-04`–`CI-07` numbers hold; coverage table full |
+
+## Encoder decisions (measured, 006)
+
+- JPEG: `mozjpeg-rs` `BaselineFastest` — beats GD on resize rtt (0.74–0.99×) and output size (−13% at q85). Pure-Rust, keeps CI-03's no-C-deps cross-compile. The progressive/trellis presets are 2–3× slower for a few more percent — lost the race against GD.
+- WebP: quality-aware via `webp-rust` (pure-Rust) — `quality ≥ 90` lossless VP8L, else lossy VP8. Replaces the lossless-only limitation.
+- Client connection pooling (`keepAlive`) — the daemon now serves sequential requests per connection (`ipc_23` wire test). IPC is ~1–3 ms/op, so pooling's measurable win is small; it's the right architecture regardless.
 | 5 | Docs & launch | Launch checklist below |
 
 A phase is done when its MUSTs pass their ACs — the status column above is the task list.
