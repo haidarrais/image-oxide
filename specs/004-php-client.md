@@ -2,7 +2,7 @@
 
 > **Status:** DRAFT · **Owner:** `laravel-image-oxide` (repo 2)
 > **Consumes only 001/003.** Never talks to raw sockets directly from framework code — that's this package's job. The GD capability table here mirrors 003's `OPS-02` matrix exactly.
-> Lives in repo 1 (`haidarrais/image-oxide`). Its consumer, [005](../laravel-image-oxide/specs/005-laravel-bridge.md), has migrated to repo 2 (`haidarrais/laravel-image-oxide`); the link resolves on a local sibling checkout.
+> Lives in repo 1 (`haidarrais/image-oxide`) and ships from [`haidarrais/php-image-oxide`](https://github.com/haidarrais/php-image-oxide) (Packagist `haidarrais/image-oxide`). Its consumer, [005](../laravel-image-oxide/specs/005-laravel-bridge.md), has migrated to repo 2 (`haidarrais/laravel-image-oxide`); the link resolves on a local sibling checkout.
 
 - **Context & Decision** · **Definitions** · **Requirements** · **Acceptance Criteria** · **Out of Scope** · **Open Questions**
 

@@ -1,6 +1,2 @@
 target/
 *.sock
-
-# PHP client
-php/vendor/
-php/.phpunit.cache/

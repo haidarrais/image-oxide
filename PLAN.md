@@ -16,7 +16,7 @@ Everything is spec-driven. The specs are the requirements; this file is only an 
 | [001-daemon-ipc.md](specs/001-daemon-ipc.md) — wire protocol | 1 | ✅ DONE — 22+9 tests green, commit `7900765` |
 | [002-daemon-lifecycle.md](specs/002-daemon-lifecycle.md) | 1 | ✅ DONE — socket 0600, pool, idle shutdown, SIGTERM |
 | [003-image-ops.md](specs/003-image-ops.md) — pixel semantics (dual impl) | 1 | ✅ DONE — pipeline + EXIF, AC-OPS-03 covered |
-| [004-php-client.md](specs/004-php-client.md) | 2 | ✅ DONE — 11 PHPUnit tests green, AC-PHP-01..05 |
+| [004-php-client.md](specs/004-php-client.md) | 2 | ✅ DONE — published as [`haidarrais/php-image-oxide`](https://github.com/haidarrais/php-image-oxide) / Packagist `haidarrais/image-oxide` |
 | [006-ci-release.md](specs/006-ci-release.md) — Rust/client half | 4 | DRAFT |
 | 005-laravel-bridge.md, 006 (Laravel half) | 3 | **migrated** → repo 2 |
 
@@ -35,7 +35,7 @@ A phase is done when its MUSTs pass their ACs — the status column above is the
 ## Contract rules
 
 1. **001 wins** — single source of truth for the wire protocol.
-2. **005 consumes only 004's public API**, never raw sockets.
+2. **005 consumes only 004's public API**, never raw sockets. 004 now ships from the split repo [`haidarrais/php-image-oxide`](https://github.com/haidarrais/php-image-oxide).
 3. **003 is implemented twice** (Rust daemon, GD driver) — that duality is the graceful-degradation contract.
 
 ## NFR stakes
@@ -51,7 +51,7 @@ A phase is done when its MUSTs pass their ACs — the status column above is the
 ## Launch checklist
 
 - [ ] Phase 1 daemon ships: all `IPC-`/`LIFE-`/`OPS-` ACs green in CI
-- [ ] Phase 2 client ships: `PHP-` ACs green, GD table matches 003
-- [ ] Phase 3 bridge ships (repo 2): `LV-` ACs green
+- [x] Phase 2 client ships: `PHP-` ACs green, GD table matches 003 — published as `haidarrais/image-oxide` on Packagist
+- [x] Phase 3 bridge ships (repo 2): `LV-` ACs green — published as `haidarrais/laravel-image-oxide` on Packagist
 - [ ] Phase 4: NFR benchmarks pass `CI-04`–`CI-07`; coverage table full
-- [ ] Publish order: daemon binary release → `haidarrais/image-oxide` → `haidarrais/laravel-image-oxide`
+- [x] Publish order: daemon binary release → `haidarrais/image-oxide` → `haidarrais/laravel-image-oxide`
