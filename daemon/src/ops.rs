@@ -106,17 +106,22 @@ fn validate_output_path(path: &str) -> Result<PathBuf, OxideError> {
 /// `OPS-03`: decode then auto-apply EXIF orientation. Post-rotation dimensions
 /// are the ones reported in the response.
 fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
-    let mut reader = ImageReader::open(path)
-        // Content-probe the format instead of inferring it from the file
-        // extension: clients like the storage macro hand over extensionless
-        // temp files (tempnam), which the extension-based path rejects.
-        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, format!("cannot open input: {e}")))?
-        .with_guessed_format()
-        .map_err(|e| OxideError::new(ErrorCode::DecodeFailed, format!("cannot sniff input format: {e}")))?;
-    reader.no_limits();
-    let format = reader.format().ok_or_else(|| {
+    // Read the first bytes to manually probe the format by magic bytes.
+    // This is more reliable than `with_guessed_format()` which can fail on
+    // extensionless temp files (e.g., from `tempnam()`) or files with
+    // unusual metadata.
+    let mut file = fs::File::open(path)
+        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, format!("cannot open input: {e}")))?;
+    let mut magic = [0u8; 16];
+    use std::io::Read;
+    let n = file.read(&mut magic)
+        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, format!("cannot read input: {e}")))?;
+    drop(file);
+
+    let format = probe_format(&magic[..n]).ok_or_else(|| {
         OxideError::new(ErrorCode::DecodeFailed, "unrecognized input format")
     })?;
+
     // AVIF decode deliberately disabled in v1 (see module doc).
     if format == ImageFormat::Avif {
         return Err(OxideError::new(
@@ -124,6 +129,12 @@ fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
             "AVIF decode is deferred to v1.1 (`OPS-02`)",
         ));
     }
+
+    // Now open with the probed format explicitly set
+    let mut reader = ImageReader::open(path)
+        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, format!("cannot open input: {e}")))?;
+    reader.set_format(format);
+    reader.no_limits();
     let mut decoder = reader.into_decoder().map_err(|e| {
         OxideError::new(ErrorCode::DecodeFailed, format!("cannot create decoder: {e}"))
     })?;
@@ -132,6 +143,40 @@ fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
         OxideError::new(ErrorCode::DecodeFailed, format!("decode failed: {e}"))
     })?;
     Ok(apply_orientation(img, orientation))
+}
+
+/// Probe image format from magic bytes.
+fn probe_format(bytes: &[u8]) -> Option<ImageFormat> {
+    if bytes.len() < 4 {
+        return None;
+    }
+    // JPEG: FF D8 FF
+    if bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+        return Some(ImageFormat::Jpeg);
+    }
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if bytes.len() >= 8 && &bytes[0..8] == b"\x89PNG\r\n\x1a\n" {
+        return Some(ImageFormat::Png);
+    }
+    // GIF: 47 49 46 38 (GIF8)
+    if bytes.len() >= 6 && &bytes[0..4] == b"GIF8" {
+        return Some(ImageFormat::Gif);
+    }
+    // WebP: RIFF....WEBP
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some(ImageFormat::WebP);
+    }
+    // BMP: 42 4D (BM)
+    if bytes[0] == 0x42 && bytes[1] == 0x4D {
+        return Some(ImageFormat::Bmp);
+    }
+    // TIFF: 49 49 2A 00 (little-endian) or 4D 4D 00 2A (big-endian)
+    if bytes.len() >= 4 {
+        if (&bytes[0..4] == b"II\x2A\x00") || (&bytes[0..4] == b"MM\x00\x2A") {
+            return Some(ImageFormat::Tiff);
+        }
+    }
+    None
 }
 
 fn apply_orientation(mut img: DynamicImage, o: Orientation) -> DynamicImage {
@@ -190,6 +235,9 @@ fn encode(img: &DynamicImage, format: ImageFormat, quality: u8, out: &mut Vec<u8
                 // image 0.25's encoder is lossless-only — this replaces it.
                 let mut config = webp_rust::LossyEncodingConfig::default();
                 config.quality = quality as f32;
+                // method 0 = fastest (lowest compression effort, 0-6 range).
+                // Default is likely 4+ which is slow; 0 trades a few % size for speed.
+                config.method = 0;
                 let bytes = webp_rust::encode_lossy_with_config(&buffer, &config, None)
                     .map_err(|e| encode_err(format, e))?;
                 out.extend_from_slice(&bytes);

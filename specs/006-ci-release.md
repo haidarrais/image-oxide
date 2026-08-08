@@ -14,7 +14,7 @@ CI enforces the constitution (000) from Phase 4 onward. Matrices and publish ord
 ### Matrices
 
 - `CI-01` — MUST. Rust daemon CI matrix: `ubuntu-latest`, `macos-latest`, `windows-latest` × stable toolchain. Windows runs the TCP transport tests (`LIFE-03`).
-- `CI-02` — MUST. PHP client CI matrix: PHP 8.1, 8.2, 8.3 × `ubuntu-latest`. Runs against a compiled daemon binary from the same pipeline (or a tagged release).
+- `CI-02` — MUST. PHP client CI matrix: PHP 8.2, 8.3 × `ubuntu-latest`. Runs against a compiled daemon binary from the same pipeline (or a tagged release).
 - `CI-03` — MUST. Cross-compile target for the daemon covers `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`, `x86_64-pc-windows-msvc` (avoids C source deps for AVIF in v1 — `OPS-01`). The JPEG encoder (`mozjpeg-rs`) and WebP lossy encoder (`webp-rust`) are pure-Rust ports — no C **source** dependencies enter the build. The final link still needs a cross-`cc` for the target (rustc links every binary against libc), so the aarch64 job installs `gcc-aarch64-linux-gnu`.
 
 ### NFR benchmarks (from PLAN.md, calibrated in Phase 1)
