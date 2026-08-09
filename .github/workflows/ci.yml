@@ -59,12 +59,13 @@ jobs:
 
   # CI-05: NFR benchmark gate — the daemon must stay ahead of GD on resize+compress.
   # Requires the demo layout (laravel-image-oxide-demo + php-image-oxide) beside
-  # this repo; run where those co-exist (CI-05 is documented in specs/006).
+  # this repo; run where those co-exist. NFR targets: boot p50 < 50ms (CI-04),
+  # resize p95 < 300ms (CI-05), daemon RSS <= 128 MB on 24MP (CI-06).
   benchmark:
     name: NFR benchmark gate (CI-05)
     runs-on: ubuntu-latest
     needs: daemon-tests
-    if: false # gated behind the monorepo layout; see specs/006-ci-release.md
+    if: false # gated behind the monorepo layout (demo + client repos as siblings)
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
