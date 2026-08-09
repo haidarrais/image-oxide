@@ -88,11 +88,6 @@ jobs:
           # cannot push (fail loudly rather than silently skipping).
           token: ${{ secrets.PHP_IMAGE_OXIDE_TOKEN }}
 
-      - name: Fail if publish token missing
-        if: ${{ secrets.PHP_IMAGE_OXIDE_TOKEN == '' }}
-        run: |
-          echo "::error::PHP_IMAGE_OXIDE_TOKEN secret required to push binaries to haidarrais/php-image-oxide"
-
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
