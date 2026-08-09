@@ -1,0 +1,122 @@
+name: Release daemon binaries
+
+on:
+  workflow_dispatch:          # manual: rebuild + republish the bundled binaries
+  push:
+    tags: ['v*']              # automatic on version tags
+
+permissions:
+  contents: read
+
+jobs:
+  # Build the daemon for the four consumer platforms. The PHP client
+  # (haidarrais/php-image-oxide) resolves daemon binaries from
+  # `bin/{os}-{arch}/image-oxide` inside its own package; this job uploads the
+  # per-platform artifacts that the publish job drops into that layout.
+  binaries:
+    name: build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: darwin-arm64   # Apple Silicon dev machines
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: darwin-x64     # Intel Macs
+            os: macos-14
+            target: x86_64-apple-darwin
+          - name: linux-x64      # most Linux servers / CI
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64    # Graviton / Raspberry Pi
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # GitHub Actions macos runners are arm64; cross-compiling to x86_64 from
+      # them requires the Intel linker, and ubuntu arm runners need the same
+      # for aarch64 cross-link when rustc invokes cc.
+      - name: Install cross linker (Linux aarch64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            daemon/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-${{ hashFiles('daemon/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.target }}-cargo-
+
+      - name: Build release binary
+        run: cargo build --manifest-path daemon/Cargo.toml --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-oxide-${{ matrix.name }}
+          path: daemon/target/${{ matrix.target }}/release/image-oxide
+          if-no-files-found: error
+
+  # Commit the four binaries into the PHP package's bin/ layout.
+  publish:
+    name: Publish binaries into php-image-oxide
+    runs-on: ubuntu-latest
+    needs: binaries
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: haidarrais/php-image-oxide
+          ref: main
+          # GITHUB_TOKEN of the caller repo cannot write the target repo; the
+          # PHP repo is NOT a dependency of the Rust repo, so the caller's
+          # default token gets read-only access and the push fails. For real
+          # publish, add a fine-grained PAT with contents:write on
+          # haidarrais/php-image-oxide as a repo secret named
+          # PHP_IMAGE_OXIDE_TOKEN. Without it the job documents the flow but
+          # cannot push (fail loudly rather than silently skipping).
+          token: ${{ secrets.PHP_IMAGE_OXIDE_TOKEN }}
+
+      - name: Fail if publish token missing
+        if: ${{ secrets.PHP_IMAGE_OXIDE_TOKEN == '' }}
+        run: |
+          echo "::error::PHP_IMAGE_OXIDE_TOKEN secret required to push binaries to haidarrais/php-image-oxide"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Place binaries into bin/{os}-{arch}/
+        run: |
+          mkdir -p bin
+          for spec in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            src="artifacts/image-oxide-$spec/image-oxide"
+            [ -f "$src" ] || { echo "missing $spec binary"; exit 1; }
+            mkdir -p "bin/$spec"
+            cp "$src" "bin/$spec/image-oxide"
+            chmod +x "bin/$spec/image-oxide"
+          done
+          ls -la bin/*/
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bin/
+          if git diff --cached --quiet; then
+            echo "no binary changes"
+          else
+            git commit -m "chore: rebuild daemon binaries from image-oxide@${{ github.sha }}"
+            git push origin HEAD:main
+          fi
