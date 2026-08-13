@@ -105,7 +105,7 @@ fn validate_output_path(path: &str) -> Result<PathBuf, OxideError> {
 
 /// `OPS-03`: decode then auto-apply EXIF orientation. Post-rotation dimensions
 /// are the ones reported in the response.
-fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
+fn decode(path: &Path) -> Result<(DynamicImage, ImageFormat), OxideError> {
     // Read the first bytes to manually probe the format by magic bytes.
     // This is more reliable than `with_guessed_format()` which can fail on
     // extensionless temp files (e.g., from `tempnam()`) or files with
@@ -142,7 +142,7 @@ fn decode(path: &Path) -> Result<DynamicImage, OxideError> {
     let img = DynamicImage::from_decoder(decoder).map_err(|e| {
         OxideError::new(ErrorCode::DecodeFailed, format!("decode failed: {e}"))
     })?;
-    Ok(apply_orientation(img, orientation))
+    Ok((apply_orientation(img, orientation), format))
 }
 
 /// Probe image format from magic bytes.
@@ -278,10 +278,10 @@ pub fn process_request(req: &Request) -> Result<Processed, OxideError> {
     let output = validate_output_path(&req.output.path)?;
     let quality = validate_quality(req.quality)?;
 
-    let img = decode(&input)?;
+    let (img, format) = decode(&input)?;
     let mut state = State {
         img,
-        format: input_format(&input)?,
+        format,
     };
 
     for (i, op) in req.ops.iter().enumerate() {
@@ -327,18 +327,6 @@ fn validate_quality(q: Option<u8>) -> Result<u8, OxideError> {
             format!("quality must be {QUALITY_MIN}–{QUALITY_MAX} (`OPS-05`), got {q}"),
         )),
     }
-}
-
-fn input_format(input: &Path) -> Result<ImageFormat, OxideError> {
-    let reader = ImageReader::open(input)
-        // Same content-probing rationale as `decode`: extensionless temp files
-        // (tempnam) must still resolve to their real format.
-        .map_err(|e| OxideError::new(ErrorCode::InputUnreadable, e.to_string()))?
-        .with_guessed_format()
-        .map_err(|e| OxideError::new(ErrorCode::DecodeFailed, e.to_string()))?;
-    reader.format().ok_or_else(|| {
-        OxideError::new(ErrorCode::DecodeFailed, "unrecognized input format")
-    })
 }
 
 // ---- op: resize (`OPS-07`–`OPS-09`) ----
@@ -538,7 +526,7 @@ fn op_watermark(state: &mut State, op: &serde_json::Value) -> Result<(), OxideEr
     }
 
     let wm_path = validate_input_path(wm_path)?;
-    let wm = decode(&wm_path)?;
+    let (wm, _) = decode(&wm_path)?;
     state.img = composite_watermark(&state.img, &wm, position, offset_x, offset_y, opacity);
     Ok(())
 }
