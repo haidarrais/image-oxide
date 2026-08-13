@@ -351,10 +351,11 @@ fn op_resize(state: &mut State, op: &serde_json::Value) -> Result<(), OxideError
     validate_position(position)?;
 
     let (w, h) = resolve_dimensions(state.img.dimensions(), width, height);
+    let img = std::mem::take(&mut state.img);
     state.img = match fit {
-        "cover" => resize_cover(state.img.clone(), w, h, position),
-        "contain" => resize_contain(state.img.clone(), w, h),
-        "fill" => state.img.resize_exact(w, h, FilterType::Triangle),
+        "cover" => resize_cover(img, w, h, position),
+        "contain" => resize_contain(img, w, h),
+        "fill" => img.resize_exact(w, h, FilterType::Triangle),
         other => {
             return Err(OxideError::new(
                 ErrorCode::OpFailed,
@@ -527,7 +528,7 @@ fn op_watermark(state: &mut State, op: &serde_json::Value) -> Result<(), OxideEr
 
     let wm_path = validate_input_path(wm_path)?;
     let (wm, _) = decode(&wm_path)?;
-    state.img = composite_watermark(&state.img, &wm, position, offset_x, offset_y, opacity);
+    state.img = composite_watermark(std::mem::take(&mut state.img), &wm, position, offset_x, offset_y, opacity);
     Ok(())
 }
 
@@ -545,7 +546,7 @@ fn nonneg_u32(op: &serde_json::Value, key: &str) -> Result<u32, OxideError> {
 /// `OPS-16`: opacity multiplies the watermark's alpha before a straight
 /// source-over composite.
 fn composite_watermark(
-    base: &DynamicImage,
+    base: DynamicImage,
     wm: &DynamicImage,
     position: &str,
     offset_x: u32,
@@ -555,7 +556,7 @@ fn composite_watermark(
     let (bw, bh) = base.dimensions();
     let (ww, wh) = wm.dimensions();
     if ww == 0 || wh == 0 || ww >= bw || wh >= bh {
-        return base.clone();
+        return base;
     }
     let (bx, by) = grid_origin(bw, bh, ww, wh, position);
     // Offset moves toward center: on a right-edge anchor, x decreases.
@@ -571,7 +572,7 @@ fn composite_watermark(
     };
 
     let wm_rgba = wm.to_rgba8();
-    let mut out = base.to_rgba8();
+    let mut out = base.into_rgba8();
     for y in 0..wh {
         for x in 0..ww {
             let wp = wm_rgba.get_pixel(x, y).0;
