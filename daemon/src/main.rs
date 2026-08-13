@@ -53,3 +53,4 @@ fn main() -> ExitCode {
         }
     }
 }
+invalid rust code
