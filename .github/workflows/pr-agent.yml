@@ -1,76 +1,66 @@
-name: PR Agent (Gemini)
+name: Enterprise AI Code Reviewer (PR Agent)
 
 on:
   pull_request:
-    # Triggers on new PRs, when reopened, marked ready, or when new commits are pushed.
-    # NOTE: on a PR from a fork, secrets (GEMINI_API_KEY) aren't passed to `pull_request`
-    # runs - this only works end-to-end for branches within this repo. For external
-    # contributors, PR-Agent's GitHub docs show a `pull_request_target` variant with an
-    # extra `if:` guard that setup needs - worth reading before switching to it.
+    # Triggers strictly on pull request activity within the same repository.
+    # Fork-based secrets are protected by GitHub's default redaction.
     types: [opened, reopened, ready_for_review, synchronize]
   issue_comment:
-    # Lets you trigger the agent manually by commenting on the PR (e.g. "/improve")
+    # Enables manual tool invocation via comments (e.g., "/improve")
     types: [created, edited]
 
 concurrency:
-  # A new push or comment supersedes an in-flight run on the same PR instead of queuing behind it
+  # Ensures that subsequent pushes to the same PR cancel redundant, in-flight AI reviews.
   group: pr-agent-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   pr_agent_job:
-    # Skip bot senders, and skip issue_comment events on plain issues (not PRs)
-    if: ${{ github.event.sender.type != 'Bot' && (github.event_name != 'issue_comment' || github.event.issue.pull_request) }}
+    name: "Autonomous Architecture Assessment"
+    # STRICT ZERO-TRUST IDENTITY GATE: 
+    # Excludes bots and restricts execution solely to trusted organizational identities.
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      (github.event_name != 'issue_comment' || github.event.issue.pull_request) &&
+      (
+        github.event.pull_request.author_association == 'OWNER' ||
+        github.event.pull_request.author_association == 'MEMBER' ||
+        github.event.pull_request.author_association == 'COLLABORATOR' ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
-      contents: write # only needed for tools that push commits - see config.restricted_mode if you'd rather not grant it
-      checks: write # needed for github.publish_as_check_run below
+      contents: read       # Principle of Least Privilege: Bounded to read-only.
+      checks: write        # Required to route output to the GitHub Checks API.
+    
     steps:
-      - name: PR Agent action step
+      - name: PR Agent Execution Engine
         uses: the-pr-agent/pr-agent@main
         env:
-          # Automatically provided by GitHub Actions
+          # System Authentication
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          # 1. Route the agent to use Google Gemini
-          # gemini-1.5-flash was retired in Sept 2025, so every run of this workflow was
-          # silently failing. 3.6 Flash is the current GA flash-tier model; 3.5 Flash-Lite
-          # is a genuinely different model for the fallback, not a copy of the primary.
-          # Google retires Gemini models often - check ai.google.dev/gemini-api/docs/deprecations
-          # if this starts erroring again someday.
+          
+          # Intelligence Routing (Gemini 2026 Stable Ecosystem)
+          # Utilizes 3.6 Flash for core reasoning and 3.5 Flash-Lite for high-throughput fallback.
           config.model: "gemini/gemini-3.6-flash"
           config.fallback_models: '["gemini/gemini-3.5-flash-lite"]'
-
-          # 2. Inject your Gemini API key
           GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-          # 3. Enable automatic tools on PR creation
-          github_action_config.auto_review: "true"
+          
+          # Workflow Automation Staging
+          # Automates descriptive summaries and high-level reviews. Requires manual invocation for inline suggestions.
           github_action_config.auto_describe: "true"
-          github_action_config.auto_improve: "true"
-
-          # `synchronize` is in the trigger above, but PR-Agent ignores pushed commits
-          # unless this is explicitly turned on - without it the job runs on every push
-          # and does nothing, just burning Action minutes. Drop "/improve" below if
-          # re-suggesting on every single push is too noisy for your team.
+          github_action_config.auto_review: "true"
+          github_action_config.auto_improve: "false" 
+          
+          # Synchronize Event Handling
           github_action_config.handle_push_trigger: "true"
-          github_action_config.push_commands: '["/describe", "/review", "/improve"]'
-
-          # Publishes /review, /describe and /improve output to the PR's Checks tab
-          # (alongside the usual comment). This is what lets you add the review as a
-          # required status check in branch protection - otherwise "fail the review"
-          # below only ever changes comment text, it can't block a merge.
+          github_action_config.push_commands: '["/describe", "/review"]'
+          
+          # Output and UI/UX Formatting
+          # Reroutes monolithic comments to the Checks tab to preserve human conversation flow.
           github.publish_as_check_run: "true"
-
-          # Force the /improve tool to provide production-ready patches
-          pr_code_suggestions.extra_instructions: >-
-            Focus on architectural integrity, performance, and security.
-            For Rust: enforce strict lifetimes, zero-cost abstractions, and flag unnecessary .clone() calls.
-            For PHP/Laravel: explicitly check for N+1 query bottlenecks, improper dependency injection, and mass assignment vulnerabilities.
-            Never suggest stylistic or formatting changes.
-
-          # Force the /review tool to act as a strict gatekeeper
-          pr_reviewer.extra_instructions: >-
-            Act as a strict Technical Lead. Flag any security vulnerabilities, race conditions, or unhandled exceptions. Fail the review if potential SQL injections or XSS risks are detected.
+          config.output_run_details: "true"

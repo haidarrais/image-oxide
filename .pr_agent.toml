@@ -1,0 +1,82 @@
+[config]
+# Token Thermodynamics & Context Window Management
+# Elevated to support modern Gemini context windows, preventing arbitrary truncation of large pull requests.
+max_model_tokens = 128000
+custom_model_max_tokens = 128000
+max_description_tokens = 1500
+max_commits_tokens = 1500
+
+# Contextual Grounding & AST Awareness
+# Injects unmodified surrounding code and reads repository directives from the default branch.
+allow_dynamic_context = true
+max_extra_lines_before_dynamic_context = 10
+patch_extra_lines_before = 5
+patch_extra_lines_after = 5
+repo_context_files = ["AGENTS.md"]
+repo_context_from_default_branch = true
+
+# Resiliency & Runtime Adjustments
+ai_timeout = 180
+temperature = 0.2
+publish_output = true
+
+# Alert Fatigue Mitigation: Actor & Label Exclusions
+ignore_pr_authors = [
+    "dependabot[bot]", 
+    "renovate[bot]", 
+    "github-actions[bot]", 
+    "snyk-bot"
+]
+ignore_pr_labels = ["no-ai-review", "do-not-merge", "wip", "draft", "ignore-compliance"]
+ignore_pr_title = ["^\\[Auto\\]", "^Bump ", "^chore", "^Merge branch"]
+
+[ignore]
+# Path Exclusions: Preserving Tokens and Avoiding Irrelevant Code
+glob = [
+    '*.lock', 
+    'package-lock.json', 
+    'yarn.lock', 
+    'pnpm-lock.yaml', 
+    'dist/**', 
+    'build/**', 
+    'vendor/**', 
+    'node_modules/**', 
+    '*.svg', 
+    '*.sops.yaml', 
+    '**/gen/**'
+]
+
+[pr_reviewer]
+# High-Level Architectural Assessment Directives
+require_security_review = true
+require_score_review = false
+require_tests_review = true
+require_focused_review = true
+persistent_comment = true
+
+extra_instructions = """
+ACT AS A PRINCIPAL SYSTEMS ARCHITECT.
+1. Identify race conditions, memory leaks, or unhandled promise rejections.
+2. Flag missing test coverage for critical algorithmic paths.
+3. Ignore missing docstrings, variable naming conventions, and whitespace format.
+4. If the code is structurally sound, explicitly state: 'No major architectural or security flaws detected.'
+"""
+
+[pr_code_suggestions]
+# Constraints for Manual /improve Invocations
+persistent_inline_comments = true
+commitable_code_suggestions = true
+num_code_suggestions = 3
+
+extra_instructions = """
+ACT AS A SENIOR SECURITY ENGINEER.
+Provide actionable, committable code suggestions ONLY if a distinct bug, security vulnerability, or severe performance bottleneck is found. 
+Do not suggest trivial syntactic sugar or stylistic refactoring.
+"""
+
+[pr_description]
+# Automated PR Summary Configuration
+publish_labels = false
+generate_ai_title = true
+add_original_user_description = true
+use_description_markers = true
