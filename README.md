@@ -1,4 +1,4 @@
-# image-oxide
+# Image Oxide
 
 A per-UID local image-processing **daemon** in Rust, plus a zero-setup
 [PHP client](https://github.com/haidarrais/php-image-oxide) and
