@@ -17,7 +17,7 @@ while freeing the PHP-FPM worker.
 4. **Boring over clever.**
 5. **Protocol semver-frozen at 1.0.0** — additive-only after 1.0.0.
 
-## Layout
+## Layouts
 
 | Path | What |
 |------|------|
