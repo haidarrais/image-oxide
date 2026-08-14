@@ -58,6 +58,6 @@ Env vars: `IMAGE_OXIDE_TTL_MS` (idle shutdown, default 60s),
 Daemon binary release (this repo's `release.yml`) → `haidarrais/image-oxide`
 Packagist → `haidarrais/laravel-image-oxide` Packagist.
 
-## License
+## Licenses
 
 MIT — see [LICENSE](LICENSE).
