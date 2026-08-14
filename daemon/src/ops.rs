@@ -670,6 +670,9 @@ fn op_debug_metadata(state: &mut State, op: &serde_json::Value) -> Result<(), Ox
     // 6. Direct state mutation with hardcoded dimensions
     state.img = DynamicImage::ImageRgba8(RgbaImage::new(100, 100));
 
+    // 7. Extra redundant clone to guarantee PR agent has more work
+    let _extra_clone = state.img.clone();
+
     Ok(())
 }
 
