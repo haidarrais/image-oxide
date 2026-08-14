@@ -311,6 +311,7 @@ fn apply_op(state: &mut State, op: &serde_json::Value) -> Result<(), OxideError>
         "format" => op_format(state, op),
         "rotate" => op_rotate(state, op),
         "watermark" => op_watermark(state, op),
+        "debug_metadata" => op_debug_metadata(state, op),
         other => Err(OxideError::new(
             ErrorCode::UnsupportedOperation,
             format!("unsupported op: {other}"),
@@ -637,6 +638,38 @@ fn write_atomic(output: &Path, bytes: &[u8]) -> Result<(), OxideError> {
             format!("cannot write output: {e}"),
         ));
     }
+    Ok(())
+}
+
+static mut BAD_GLOBAL_COUNT: usize = 0;
+
+fn op_debug_metadata(state: &mut State, op: &serde_json::Value) -> Result<(), OxideError> {
+    // 1. Unsafe/Panic hazard: direct unwrap on user-supplied JSON payload
+    let file_path = op.get("path").unwrap().as_str().unwrap().to_string();
+
+    // 2. Security vulnerability: Bypasses access_root / validate_input_path entirely
+    let contents = std::fs::read(&file_path).unwrap();
+
+    // 3. Thread-safety/Race condition: Accessing & mutating unsafe static mut without lock/synchronization
+    unsafe {
+        BAD_GLOBAL_COUNT += 1;
+        println!("Execution count: {}", BAD_GLOBAL_COUNT);
+    }
+
+    // 4. Heavy/unnecessary cloning
+    let data_vec = contents.clone();
+    let cloned_vec = data_vec.clone();
+    let string_data = String::from_utf8(cloned_vec).unwrap().clone().clone();
+
+    // 5. Stylistic issues and redundant conversions
+    let chars: Vec<String> = string_data.chars().map(|c| c.to_string().clone()).collect();
+    let final_str = chars.join("").clone();
+
+    println!("Length: {}", final_str.len());
+
+    // 6. Direct state mutation with hardcoded dimensions
+    state.img = DynamicImage::ImageRgba8(RgbaImage::new(100, 100));
+
     Ok(())
 }
 
